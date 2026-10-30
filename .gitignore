@@ -1,0 +1,21 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Local application data
+*.sqlite3
+*.db
+instance/
+uploads/
+user_data/
+logs/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
