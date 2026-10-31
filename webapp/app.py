@@ -58,6 +58,15 @@ class Upload(Base):
     stored_name: Mapped[str] = mapped_column(String(255), unique=True)
     rows_count: Mapped[int] = mapped_column(Integer, default=0)
 
+class ConnectedPage(Base):
+    __tablename__ = "connected_pages"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    page_id: Mapped[str] = mapped_column(String(80), index=True)
+    name: Mapped[str] = mapped_column(String(255))
+    encrypted_page_token: Mapped[str] = mapped_column(String(4096))
+    selected: Mapped[bool] = mapped_column(Boolean, default=False)
+
 Base.metadata.create_all(engine)
 
 app = FastAPI(title="Video Facebook")
@@ -177,8 +186,15 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     if not user:
         return RedirectResponse("/login", status_code=303)
     uploads = db.scalars(select(Upload).where(Upload.user_id == user.id).order_by(Upload.id.desc())).all()
+    pages = db.scalars(select(ConnectedPage).where(ConnectedPage.user_id == user.id).order_by(ConnectedPage.name)).all()
     token = csrf_token(request)
     items = "".join(f"<li>{html.escape(u.original_name)} — {u.rows_count} rows</li>" for u in uploads) or "<li>No CSV uploaded yet.</li>"
+    page_items = "".join(
+        f"<li>{html.escape(p.name)} {'(selected)' if p.selected else ''}"
+        f"<form method='post' action='/select-page'><input type='hidden' name='csrf' value='{token}'>"
+        f"<input type='hidden' name='page_id' value='{html.escape(p.page_id, quote=True)}'>"
+        f"<button>Select this Page</button></form></li>" for p in pages
+    ) or "<li>No Pages loaded yet. Click Refresh Pages after connecting Meta.</li>"
     connected = "Connected token is saved encrypted." if user.encrypted_meta_token else "Facebook is not connected yet."
     body = f"""
     <section class="card"><h2>Your dashboard</h2><p>Signed in as {html.escape(user.email)}</p>
@@ -187,7 +203,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
     <p class="muted">Temporary developer setup: paste a User Access Token generated for your own Meta account. Never share it. This form sends it to this server over HTTPS and stores it encrypted. OAuth login will replace this manual step before public launch.</p>
     <form method="post" action="/connect-token"><input type="hidden" name="csrf" value="{token}">
     <label>Meta User Access Token</label><input type="password" name="access_token" required autocomplete="off">
-    <button>Save encrypted token</button></form></section>
+    <button>Save encrypted token</button></form>
+    <form method="post" action="/refresh-pages"><input type="hidden" name="csrf" value="{token}">
+    <button>Refresh my Facebook Pages</button></form>
+    <h3>Choose the Page for publishing</h3><ul>{page_items}</ul></section>
     <section class="card"><h3>Upload your CSV</h3><p class="muted">CSV must contain a Video Url / Video URL column. Uploads are private to your account.</p>
     <form method="post" action="/upload" enctype="multipart/form-data"><input type="hidden" name="csrf" value="{token}">
     <input type="file" name="file" accept=".csv,text/csv" required><button>Upload CSV</button></form></section>
@@ -241,6 +260,60 @@ def list_pages(request: Request, db: Session = Depends(get_db)):
     if not response.ok:
         raise HTTPException(400, "Meta could not list Pages. Check Page access and app permissions.")
     return {"pages": [{"id": p.get("id"), "name": p.get("name")} for p in data.get("data", [])]}
+
+@app.post("/refresh-pages")
+def refresh_pages(request: Request, csrf: str = Form(...), db: Session = Depends(get_db)):
+    check_csrf(request, csrf)
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    if not user.encrypted_meta_token:
+        raise HTTPException(400, "Connect your Meta account first.")
+    try:
+        token = cipher.decrypt(user.encrypted_meta_token.encode("ascii")).decode("utf-8")
+        response = requests.get(
+            f"https://graph.facebook.com/{GRAPH_VERSION}/me/accounts",
+            params={"fields": "id,name,access_token", "access_token": token},
+            timeout=20,
+        )
+        data = response.json()
+    except (InvalidToken, requests.RequestException):
+        raise HTTPException(502, "Could not retrieve Facebook Pages.")
+    if not response.ok:
+        raise HTTPException(400, "Meta could not list Pages. Check Page access and permissions.")
+    for item in data.get("data", []):
+        page_id = str(item.get("id", ""))
+        page_name = str(item.get("name", "Facebook Page"))[:255]
+        page_token = item.get("access_token")
+        if not page_id or not page_token:
+            continue
+        page = db.scalar(select(ConnectedPage).where(
+            ConnectedPage.user_id == user.id, ConnectedPage.page_id == page_id
+        ))
+        encrypted = cipher.encrypt(page_token.encode("utf-8")).decode("ascii")
+        if page is None:
+            db.add(ConnectedPage(user_id=user.id, page_id=page_id, name=page_name,
+                encrypted_page_token=encrypted))
+        else:
+            page.name = page_name
+            page.encrypted_page_token = encrypted
+    db.commit()
+    return RedirectResponse("/dashboard", status_code=303)
+
+@app.post("/select-page")
+def select_page(request: Request, page_id: str = Form(...), csrf: str = Form(...), db: Session = Depends(get_db)):
+    check_csrf(request, csrf)
+    user = current_user(request, db)
+    if not user:
+        return RedirectResponse("/login", status_code=303)
+    pages = db.scalars(select(ConnectedPage).where(ConnectedPage.user_id == user.id)).all()
+    match = next((p for p in pages if p.page_id == page_id), None)
+    if match is None:
+        raise HTTPException(404, "That Page is not connected to this account.")
+    for page in pages:
+        page.selected = (page.id == match.id)
+    db.commit()
+    return RedirectResponse("/dashboard", status_code=303)
 
 @app.post("/upload")
 async def upload_csv(request: Request, file: UploadFile = File(...), csrf: str = Form(...), db: Session = Depends(get_db)):
