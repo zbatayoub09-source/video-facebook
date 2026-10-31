@@ -30,14 +30,35 @@ Facebook Login and Page permissions, valid OAuth redirect URLs, and any
 Meta review/business verification required for the intended users and use.
 The app must not promise publishing access until Meta grants those permissions.
 
-## Deployment status
+## Current implementation status
 
-Scaffold only. This is not yet a working public publisher. Authentication,
-OAuth, isolated job execution, persistent production storage, and deployment
-must be implemented and tested before sharing a public link.
+The first FastAPI scaffold has account registration/login, password hashing,
+encrypted storage for a manually supplied Meta user token, a private CSV upload
+area, and a basic dashboard. The original desktop script remains unchanged.
+
+The repository now includes a Dockerfile and a Render Blueprint
+(`../render.yaml`) with a persistent data disk and generated server secrets.
+These files prepare deployment; they do not create a live website by themselves.
+
+Still required before public launch:
+- Meta OAuth login and proper Page selection with Page access tokens.
+- A per-user publishing worker using the original publisher's behavior without
+  sharing its global token or checkpoint.
+- Per-user job progress, history, pause/resume, and safe error reporting.
+- Production database/storage review, abuse protections, and end-to-end tests.
+- Deploy and verify the service on a hosting account.
+
+**Do not share a public link as a finished publisher until these items are
+implemented and tested.**
 
 ## Local development
 
-Create a virtual environment, install `requirements.txt`, configure the
-environment variables from `.env.example`, then run the FastAPI application
-once its entry point has been implemented.
+Install `requirements.txt`, set the environment variables shown in
+`.env.example`, then run:
+
+```bash
+uvicorn app:app --reload
+```
+
+For local HTTP development, set `COOKIE_SECURE=false`. Use HTTPS and
+`COOKIE_SECURE=true` in production.
