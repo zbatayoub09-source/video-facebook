@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: video-facebook-web
+    runtime: docker
+    rootDir: webapp
+    plan: starter
+    healthCheckPath: /health
+    autoDeploy: true
+    disk:
+      name: video-facebook-data
+      mountPath: /data
+      sizeGB: 1
+    envVars:
+      - key: APP_SECRET_KEY
+        generateValue: true
+      - key: TOKEN_ENCRYPTION_KEY
+        generateValue: true
+      - key: DATA_DIR
+        value: /data
+      - key: DATABASE_URL
+        value: sqlite:////data/video_facebook.db
+      - key: META_GRAPH_VERSION
+        value: v25.0
+      - key: COOKIE_SECURE
+        value: "true"
