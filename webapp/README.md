@@ -32,16 +32,21 @@ The app must not promise publishing access until Meta grants those permissions.
 
 ## Current implementation status
 
-The first FastAPI scaffold has account registration/login, password hashing,
-encrypted storage for a manually supplied Meta user token, a private CSV upload
-area, and a basic dashboard. The original desktop script remains unchanged.
+The FastAPI scaffold has account registration/login, password hashing,
+encrypted storage for a manually supplied Meta user token, private per-user CSV
+uploads, and a dashboard. It can now fetch the user's Facebook Pages, encrypt
+Page access tokens on the server, and let the user select one Page. Page tokens
+are not returned in the page list. The original desktop script remains unchanged.
+
+This is still a development scaffold: the selected Page is saved, but video
+publishing is not implemented or enabled.
 
 The repository now includes a Dockerfile and a Render Blueprint
 (`../render.yaml`) with a persistent data disk and generated server secrets.
 These files prepare deployment; they do not create a live website by themselves.
 
 Still required before public launch:
-- Meta OAuth login and proper Page selection with Page access tokens.
+- Meta OAuth login (the current token-entry method is temporary).
 - A per-user publishing worker using the original publisher's behavior without
   sharing its global token or checkpoint.
 - Per-user job progress, history, pause/resume, and safe error reporting.
