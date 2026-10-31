@@ -1,4 +1,5 @@
 import csv
+import html
 import io
 import os
 import secrets
@@ -97,7 +98,7 @@ def current_user(request: Request, db: Session) -> User | None:
 
 def page(title: str, body: str) -> HTMLResponse:
     return HTMLResponse(f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>{title}</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{html.escape(title)}</title>
 <style>
 :root{{--bg:#101827;--panel:#1b293b;--text:#f4f7fb;--muted:#aab8ca;--accent:#2f80ed;--line:#34445b}}
 *{{box-sizing:border-box}}body{{margin:0;background:linear-gradient(135deg,#101827,#172b40);color:var(--text);font:16px Arial,sans-serif;min-height:100vh}}
@@ -177,10 +178,10 @@ def dashboard(request: Request, db: Session = Depends(get_db)):
         return RedirectResponse("/login", status_code=303)
     uploads = db.scalars(select(Upload).where(Upload.user_id == user.id).order_by(Upload.id.desc())).all()
     token = csrf_token(request)
-    items = "".join(f"<li>{u.original_name} — {u.rows_count} rows</li>" for u in uploads) or "<li>No CSV uploaded yet.</li>"
+    items = "".join(f"<li>{html.escape(u.original_name)} — {u.rows_count} rows</li>" for u in uploads) or "<li>No CSV uploaded yet.</li>"
     connected = "Connected token is saved encrypted." if user.encrypted_meta_token else "Facebook is not connected yet."
     body = f"""
-    <section class="card"><h2>Your dashboard</h2><p>Signed in as {user.email}</p>
+    <section class="card"><h2>Your dashboard</h2><p>Signed in as {html.escape(user.email)}</p>
     <p class="notice">{connected}</p>
     <h3>Connect your Facebook account</h3>
     <p class="muted">Temporary developer setup: paste a User Access Token generated for your own Meta account. Never share it. This form sends it to this server over HTTPS and stores it encrypted. OAuth login will replace this manual step before public launch.</p>
@@ -256,7 +257,7 @@ async def upload_csv(request: Request, file: UploadFile = File(...), csrf: str =
         text = raw.decode("utf-8-sig")
         reader = csv.DictReader(io.StringIO(text))
         fields = [str(x).strip().lower() for x in (reader.fieldnames or [])]
-        if not fields or not any(x in fields for x in ("video url", "video url", "video_url")):
+        if not fields or not any(x in fields for x in ("video url", "video_url")):
             raise HTTPException(400, "CSV needs a Video Url or Video URL column.")
         rows = list(reader)
     except UnicodeDecodeError:
